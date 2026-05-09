@@ -72,6 +72,26 @@ export default class ObsidianChess extends Plugin {
     block.style.maxWidth = `${boardWidthPx}px`;
     block.style.height = "auto";
     el.appendChild(block);
+
+    const pgnComment = chessboard.getPgnPositionComment();
+    if (pgnComment) {
+      const commentEl = document.createElement("div");
+      commentEl.textContent = pgnComment;
+      commentEl.style.cssText = `
+        margin-top: 8px;
+        max-width: ${boardWidthPx}px;
+        margin-left: auto;
+        margin-right: auto;
+        font-family: var(--font-text);
+        font-size: 13px;
+        line-height: 1.4;
+        color: var(--text-muted);
+        font-style: italic;
+        text-align: center;
+        white-space: pre-wrap;
+      `;
+      el.appendChild(commentEl);
+    }
   }
 
   private drawErrorMessage(error: Error, el: HTMLElement) {

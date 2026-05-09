@@ -11,6 +11,8 @@ class PGNGameState {
   private showMove: ShowMoveOption;
   private startingFEN: string | undefined;
   private chessPly: number; // Track where the chess instance currently is
+  /** PGN `{...}` comment for each ply index (0 = start, k = after k-th move). */
+  private positionComments: (string | undefined)[];
 
   constructor(
     pgnString: string,
@@ -22,6 +24,9 @@ class PGNGameState {
 
     // Load and parse PGN
     this.chess.loadPgn(pgnString);
+    const commentByFen = new Map(
+      this.chess.getComments().map(({ fen, comment }) => [fen, comment] as const),
+    );
 
     // Capture starting FEN from headers (must do this before any position changes)
     const headers = this.chess.getHeaders();
@@ -29,6 +34,19 @@ class PGNGameState {
       headers.SetUp === "1" && headers.FEN ? headers.FEN : undefined;
 
     this.moveHistory = this.chess.history({ verbose: true });
+
+    const nav = new Chess();
+    if (this.startingFEN) {
+      nav.load(this.startingFEN);
+    } else {
+      nav.reset();
+    }
+    this.positionComments = new Array(this.moveHistory.length + 1);
+    this.positionComments[0] = commentByFen.get(nav.fen());
+    for (let i = 0; i < this.moveHistory.length; i++) {
+      nav.move(this.moveHistory[i].san);
+      this.positionComments[i + 1] = commentByFen.get(nav.fen());
+    }
 
     // Start at initial ply or beginning
     this.currentPly =
@@ -140,6 +158,15 @@ class PGNGameState {
   getMoveHistory(): readonly Move[] {
     return this.moveHistory;
   }
+
+  getCurrentPositionComment(): string | undefined {
+    return this.positionComments[this.currentPly];
+  }
+
+  getCommentAtPly(ply: number): string | undefined {
+    const i = Math.max(0, Math.min(ply, this.positionComments.length - 1));
+    return this.positionComments[i];
+  }
 }
 
 /**
@@ -163,11 +190,12 @@ function formatMoveDisplay(move: Move | undefined, ply: number): string {
 }
 
 /**
- * Updates the move display element.
+ * Updates the move display element and optional PGN `{...}` comment.
  */
 function updateMoveDisplay(
   gameState: PGNGameState,
   moveInfoElement: HTMLElement,
+  moveCommentElement: HTMLElement,
 ): void {
   const currentMove = gameState.getCurrentMove();
   const currentPly = gameState.getCurrentPly();
@@ -177,6 +205,15 @@ function updateMoveDisplay(
   const plyText = `(${currentPly}/${totalPlies})`;
 
   moveInfoElement.textContent = `${moveText} ${plyText}`;
+
+  const comment = gameState.getCurrentPositionComment();
+  if (comment) {
+    moveCommentElement.textContent = comment;
+    moveCommentElement.style.display = "block";
+  } else {
+    moveCommentElement.textContent = "";
+    moveCommentElement.style.display = "none";
+  }
 }
 
 /**
@@ -352,6 +389,10 @@ function createMoveListPanel(
     whiteBtn.textContent = history[wi].san;
     whiteBtn.dataset.ply = String(whitePly);
     whiteBtn.style.cssText = MOVE_CELL_BUTTON_STYLE;
+    const whiteComment = gameState.getCommentAtPly(whitePly);
+    if (whiteComment) {
+      whiteBtn.title = whiteComment;
+    }
     whiteBtn.addEventListener("click", () => {
       onSelectPly(whitePly);
     });
@@ -367,6 +408,10 @@ function createMoveListPanel(
       blackBtn.textContent = history[bi].san;
       blackBtn.dataset.ply = String(blackPly);
       blackBtn.style.cssText = MOVE_CELL_BUTTON_STYLE;
+      const blackComment = gameState.getCommentAtPly(blackPly);
+      if (blackComment) {
+        blackBtn.title = blackComment;
+      }
       blackBtn.addEventListener("click", () => {
         onSelectPly(blackPly);
       });
@@ -414,6 +459,16 @@ export function createInteractivePGNBoard(
     width: 100%;
   `;
 
+  // Move caption: current move line + optional PGN text comment
+  const moveCaption = document.createElement("div");
+  moveCaption.style.cssText = `
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+  `;
+
   // Create move info display
   const moveInfo = document.createElement("div");
   moveInfo.style.cssText = `
@@ -423,6 +478,22 @@ export function createInteractivePGNBoard(
     text-align: center;
     min-height: 20px;
   `;
+
+  const moveComment = document.createElement("div");
+  moveComment.style.cssText = `
+    display: none;
+    font-family: var(--font-text);
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    white-space: pre-wrap;
+    max-width: 100%;
+  `;
+
+  moveCaption.appendChild(moveInfo);
+  moveCaption.appendChild(moveComment);
 
   // Create controls container
   const controls = document.createElement("div");
@@ -488,7 +559,7 @@ export function createInteractivePGNBoard(
   // Update UI function
   const updateUI = () => {
     renderBoard(gameState, options, boardContainer, boardWidthPx);
-    updateMoveDisplay(gameState, moveInfo);
+    updateMoveDisplay(gameState, moveInfo, moveComment);
     updateButtonStates(gameState, {
       first: firstButton,
       prev: prevButton,
@@ -529,7 +600,7 @@ export function createInteractivePGNBoard(
 
   // Append all to board column
   boardColumn.appendChild(boardContainer);
-  boardColumn.appendChild(moveInfo);
+  boardColumn.appendChild(moveCaption);
   boardColumn.appendChild(controls);
 
   if (showMoveList) {

@@ -119,6 +119,10 @@ export class SVGChessboard {
     };
   }
 
+  getPgnPositionComment(): string | undefined {
+    return this.chessboard.getPgnPositionComment();
+  }
+
   draw(): SVGElement {
     let g = document.createElementNS(this.xmlns, "g");
     let [annotations, annotations_foreground] = this.drawAnnotations();

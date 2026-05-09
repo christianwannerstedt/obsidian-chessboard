@@ -17,6 +17,8 @@ export type BoardCoordinate = [number, number];
 export class Chessboard {
   private chessboard: Chess;
   private lastMovePlayed?: Move;
+  /** PGN text comments `{...}` keyed by full FEN; preserved across replay to a given ply. */
+  private pgnCommentByFen?: Map<string, string>;
 
   private constructor() {
     this.chessboard = new Chess();
@@ -44,6 +46,14 @@ export class Chessboard {
 
   getLastMove(): Move | undefined {
     return this.lastMovePlayed;
+  }
+
+  /** Text comment for the current position from PGN `{...}` notation, if any. */
+  getPgnPositionComment(): string | undefined {
+    if (!this.pgnCommentByFen) {
+      return undefined;
+    }
+    return this.pgnCommentByFen.get(this.chessboard.fen());
   }
 
   static algebraicToCoord(algebraic: string): BoardCoordinate {
@@ -104,6 +114,11 @@ export class Chessboard {
   static fromPGN(pgnString: string, ply?: number): Chessboard {
     const chessboard = new Chessboard();
     chessboard.chessboard.loadPgn(pgnString);
+    chessboard.pgnCommentByFen = new Map(
+      chessboard.chessboard
+        .getComments()
+        .map(({ fen, comment }) => [fen, comment] as const),
+    );
 
     // If ply is specified, replay moves up to that ply
     if (ply !== undefined) {
